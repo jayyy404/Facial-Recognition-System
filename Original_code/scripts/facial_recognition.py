@@ -12,8 +12,9 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 
-haar_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
+haar_cascade = cv2.CascadeClassifier(cv2.samples.findFile("resources/haar_face.xml"))
+predictor = dlib.shape_predictor("shape_predictor/shape_predictor_68_face_landmarks.dat")
+print("✅ Predictor loaded successfully")
 embedder = FaceNet()
 
 #Mediapipe - Autofocus integration for stabilized face detection, if possible for Haar Cascades.
