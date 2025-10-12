@@ -1,0 +1,72 @@
+.reports-menu {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.reports-menu button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: #1e5cff;
+  color: #fff;
+}
+.reports-menu button:hover {
+  background: #0366d6;
+  transform: scale(1.05);
+}
+.report-section {
+  display: none;
+}
+.report-section.active {
+  display: block;
+}
+.report-card {
+  background: linear-gradient(to bottom left, #1d4ed8, #1e3a8a, #082f49);
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+  color: #fff;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+th,
+td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: center;
+  color: #fff;
+}
+th {
+  background: #024186;
+  color: #fff;
+}
+input,
+select {
+  margin-right: 10px;
+  padding: 6px;
+  border-radius: 5px;
+  border: none;
+}
+
+.datetime {
+  position: fixed;
+  top: 55px;
+  left: 780px;
+  font-size: 14px;
+  color: #fff;
+  background: #172554;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 500;
+  z-index: 1000;
+  text-align: center;
+}
