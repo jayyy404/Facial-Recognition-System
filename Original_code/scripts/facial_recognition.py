@@ -9,12 +9,12 @@ import requests
 from keras_facenet import FaceNet
 from deepface import DeepFace
 from flask import Flask, request, jsonify
+
 app = Flask(__name__)
 
 
 haar_cascade = cv2.CascadeClassifier(cv2.samples.findFile("resources/haar_face.xml"))
 predictor = dlib.shape_predictor("shape_predictor/shape_predictor_68_face_landmarks.dat")
-print("✅ Predictor loaded successfully")
 embedder = FaceNet()
 
 #Mediapipe - Autofocus integration for stabilized face detection, if possible for Haar Cascades.

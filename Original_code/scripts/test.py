@@ -48,7 +48,7 @@ def get_embedding(frame, box):
 
 
 def decode_image(base64_data):
-    #Decode base64 image 
+    #Decode base64 image form PHP database
     img_data = base64.b64decode(base64_data)
     np_arr = np.frombuffer(img_data, np.uint8)
     frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -100,7 +100,7 @@ def recognize_face(embedding, threshold=0.8):
     return (identity, float(min_dist)) if min_dist < threshold else ("Unknown", float(min_dist))
 
 
-# Flask API Endpoints
+# Flask API Endpoints (routing)
 @app.route("/api/register", methods=["POST"])
 def register_route():
     """Register a new user with 1–7 face samples sent from Vite/PHP (based man ni sa ila logic)""" 
