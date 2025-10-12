@@ -140,7 +140,7 @@ function resolveRewrites(string $urlpath)
 function resolveRoute(string $urlpath): ?string
 {
   $urlpath = rtrim($urlpath, "/");
-  $filepath = CONFIG['buildFilesDirectory'] . "/src/pages" . (strlen($urlpath) === 0 ? "/index.html" : "$urlpath.html");
+  $filepath = CONFIG['buildFilesDirectory'] . (strlen($urlpath) === 0 ? "/index.html" : "$urlpath.html");
 
   if (!is_file($filepath)) {
     http_response_code(404);
