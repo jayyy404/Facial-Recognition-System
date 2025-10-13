@@ -26,6 +26,13 @@ PHP_API_URL = "http://localhost/Original_code/api"
 
 os.makedirs(DATASET_DIR, exist_ok=True)
 
+# Directory where frontend will save uploaded images (dist/uploads)
+FRONTEND_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "public", "uploads")
+os.makedirs(FRONTEND_UPLOAD_DIR, exist_ok=True)
+
+# Mapping the user data: { name: {"id": id, "role": role, "dept": dept, "embedding": np.array, "image_path": path} }
+USERS_DATA = {}
+
 
 # MODEL LOADING(for checking kay gaguba kis a mag load sakon)
 if not os.path.exists(HAAR_PATH):
@@ -208,6 +215,127 @@ def fetch_from_php():
         return []
 
 
+def sanitize_filename(name: str) -> str:
+    # Simple sanitizer for folder names
+    return "".join(c for c in name if c.isalnum() or c in "-_ ").strip().replace(" ", "_")
+
+
+def download_image(url: str, dest_path: str, timeout: int = 8) -> bool:
+    try:
+        resp = requests.get(url, timeout=timeout)
+        if resp.status_code == 200:
+            with open(dest_path, "wb") as f:
+                f.write(resp.content)
+            return True
+    except Exception as e:
+        print(f"[DOWNLOAD ERROR] Could not download {url}: {e}")
+    return False
+
+
+def best_image_for_user(image_urls: list) -> tuple:
+    """Download images, run face detection and pick the image with largest face area.
+    Returns (best_image_path, face_box) or (None, None).
+    """
+    best = (None, 0, None)
+    for idx, url in enumerate(image_urls or []):
+        if not url:
+            continue
+        fname = os.path.basename(url.split("?")[0]) or f"img_{idx}.jpg"
+        # ensure extension
+        if not os.path.splitext(fname)[1]:
+            fname += ".jpg"
+        tmp_path = os.path.join(DATASET_DIR, fname)
+        if not download_image(url, tmp_path):
+            continue
+        img = cv2.imread(tmp_path)
+        if img is None:
+            continue
+        box = detect_face(img)
+        if box is None:
+            continue
+        _, _, w, h = box
+        area = w * h
+        if area > best[1]:
+            best = (tmp_path, area, box)
+
+    return (best[0], best[2]) if best[0] else (None, None)
+
+
+def bootstrap_users_from_php():
+    """Fetch users from PHP, download candidate images, compute embeddings and populate USERS_DATA."""
+    print("[BOOTSTRAP] Fetching users from PHP to build recognition dataset...")
+    try:
+        response = requests.get(f"{PHP_API_URL}/fetch_users.php?images=true&embeddings=false", timeout=10)
+        if not response.ok:
+            print(f"[BOOTSTRAP] PHP fetch failed: {response.status_code}")
+            return
+
+        payload = response.json()
+        users = payload.get("users", []) if isinstance(payload, dict) else []
+        for user in users:
+            name = user.get("name")
+            if not name:
+                continue
+            image_urls = []
+            # support different possible fields
+            if user.get("images") and isinstance(user.get("images"), list):
+                image_urls = user.get("images")
+            elif user.get("image_url"):
+                image_urls = [user.get("image_url")]
+
+            sanitized = sanitize_filename(name)
+            user_dir = os.path.join(FRONTEND_UPLOAD_DIR, sanitized)
+            os.makedirs(user_dir, exist_ok=True)
+
+            best_path, box = best_image_for_user(image_urls)
+            if not best_path:
+                print(f"[BOOTSTRAP] No valid image for user {name}")
+                continue
+
+            # move best image into user's folder
+            dest = os.path.join(user_dir, os.path.basename(best_path))
+            try:
+                os.replace(best_path, dest)
+            except Exception:
+                try:
+                    os.rename(best_path, dest)
+                except Exception:
+                    # fallback to copy
+                    with open(best_path, "rb") as r, open(dest, "wb") as w:
+                        w.write(r.read())
+
+            # compute embedding
+            img = cv2.imread(dest)
+            if img is None:
+                print(f"[BOOTSTRAP] Failed to read downloaded image for {name}")
+                continue
+            if box is None:
+                box = detect_face(img)
+            if box is None:
+                print(f"[BOOTSTRAP] No face detected after move for {name}")
+                continue
+            emb = get_embedding(img, box)
+            if emb is None:
+                print(f"[BOOTSTRAP] Failed to compute embedding for {name}")
+                continue
+
+            USERS_DATA[name] = {
+                "id": user.get("id") or user.get("user_id"),
+                "role": user.get("role"),
+                "dept": user.get("dept"),
+                "embedding": emb,
+                "image_path": dest,
+            }
+            print(f"[BOOTSTRAP] Loaded user {name} (id={USERS_DATA[name]['id']})")
+
+    except Exception as e:
+        print(f"[BOOTSTRAP ERROR] {e}")
+
+
+# Run bootstrap on import/startup
+bootstrap_users_from_php()
+
+
 # FACIAL RECOGNITION CORE
 def decode_image_from_data_url(data_url: str):
     if not data_url:
@@ -242,6 +370,52 @@ def embeddings_from_frames(frames):
         if len(embeddings) >= SAMPLES_REQUIRED:
             break
     return embeddings
+
+
+def save_frames_to_user_folder(name: str, frames: list) -> list:
+    #Save decoded frames (data URLs or base64) into public/uploads/<sanitized_name>/.
+    #Returns list of saved file paths.
+    
+    saved = []
+    if not frames:
+        return saved
+
+    sanitized = sanitize_filename(name)
+    user_dir = os.path.join(FRONTEND_UPLOAD_DIR, sanitized)
+    os.makedirs(user_dir, exist_ok=True)
+
+    for idx, frame_data in enumerate(frames):
+        try:
+            img = decode_image_from_data_url(frame_data)
+            if img is None:
+                continue
+            # write a timestamped filename
+            ts = int(time.time())
+            fname = f"{ts}_{idx}.jpg"
+            path = os.path.join(user_dir, fname)
+            # cv2.imwrite returns True/False
+            try:
+                cv2.imwrite(path, img)
+                saved.append(path)
+            except Exception:
+                # fallback to raw bytes if available
+                try:
+                    # frame_data might be a plain base64 string
+                    if frame_data.startswith('data:'):
+                        _, encoded = frame_data.split(',', 1)
+                    else:
+                        encoded = frame_data
+                    with open(path, 'wb') as f:
+                        f.write(base64.b64decode(encoded))
+                    saved.append(path)
+                except Exception:
+                    continue
+            if len(saved) >= SAMPLES_REQUIRED:
+                break
+        except Exception:
+            continue
+
+    return saved
 
 
 def _capture_samples(samples_required=SAMPLES_REQUIRED, window_name="Face Capture"):
@@ -284,16 +458,20 @@ def register_user(name, user_id=None, role="Student", dept=None, username=None, 
 
     frame_list = frames or []
     if not frame_list:
-        return {"status": "error", "message": "No image frames supplied for registration."}
+        # Don't allow registration to continue if no frames are provided
+        return {"status": "error", "message": "No face images provided. Registration requires facial images."}
+
+    # Persist frames to user's folder in public/uploads/<sanitized_name>/
+    saved_paths = save_frames_to_user_folder(name, frame_list)
+    if saved_paths:
+        print(f"[REGISTER] Saved {len(saved_paths)} frames to user's upload folder")
 
     samples = embeddings_from_frames(frame_list)
     print(f"[REGISTER] Received {len(samples)}/{SAMPLES_REQUIRED} usable samples from browser")
 
-    if len(samples) < SAMPLES_REQUIRED:
-        return {
-            "status": "error",
-            "message": f"Insufficient usable samples ({len(samples)}) from uploaded frames."
-        }
+    # Allow registration to proceed if we have at least one usable sample
+    if len(samples) == 0:
+        return {"status": "error", "message": "No usable samples supplied for registration."}
 
     avg_emb = np.mean(np.array(samples), axis=0)
 
@@ -455,7 +633,22 @@ def register_route():
             return jsonify({"status": "error", "message": "Name is required"}), 400
             
         print(f"[REGISTER] Starting facial recognition for {name}")
-        
+        # If frontend provided an image_url (or image), download into user folder and convert to data-url
+        frames = payload.get("frames") or []
+        single_image_url = payload.get("image_url") or payload.get("image")
+        if single_image_url:
+            sanitized = sanitize_filename(name)
+            user_dir = os.path.join(FRONTEND_UPLOAD_DIR, sanitized)
+            os.makedirs(user_dir, exist_ok=True)
+            fname = os.path.basename(single_image_url.split("?")[0]) or "upload.jpg"
+            dest_path = os.path.join(user_dir, fname)
+            if download_image(single_image_url, dest_path):
+                # convert saved file to data-url for register_user
+                with open(dest_path, "rb") as f:
+                    b = f.read()
+                data_url = "data:image/jpeg;base64," + base64.b64encode(b).decode("ascii")
+                frames = [data_url]
+
         # Capture face and register user
         result = register_user(
             name,
@@ -463,7 +656,8 @@ def register_route():
             role=role,
             dept=dept,
             username=username,
-            password=password
+            password=password,
+            frames=frames
         )
         
         print(f"[REGISTER] Registration result: {result}")
@@ -471,6 +665,21 @@ def register_route():
         # Check if registration was successful and embedding was generated
         if result["status"] == "success" and "php_response" in result:
             print(f"[REGISTER] Successfully registered {name}")
+            # include saved paths if available
+            if isinstance(result.get("php_response"), dict):
+                # Create a new response dictionary from scratch
+                response_dict = {}
+                # Copy all keys from result
+                for key in result:
+                    response_dict[key] = result[key]
+                # addnew key with a list value
+                response_dict["saved_paths"] = []
+                sanitized = sanitize_filename(name)
+                user_dir = os.path.join(FRONTEND_UPLOAD_DIR, sanitized)
+                if os.path.isdir(user_dir):
+                    for f in os.listdir(user_dir):
+                        response_dict["saved_paths"].append(os.path.join(user_dir, f))
+                return jsonify(response_dict)
             return jsonify(result)
             
         return jsonify(result)
@@ -483,11 +692,75 @@ def register_route():
 def login_route():
     try:
         payload = request.form if request.form else (request.get_json(silent=True) or {})
+        # prefer image_url based login
+        image_url = payload.get("image_url") or payload.get("image")
         name = payload.get("name")
-        
+
+        if image_url:
+            # download incoming image
+            incoming_dir = os.path.join(FRONTEND_UPLOAD_DIR, "incoming")
+            os.makedirs(incoming_dir, exist_ok=True)
+            fname = os.path.basename(image_url.split("?")[0]) or "login.jpg"
+            incoming_path = os.path.join(incoming_dir, fname)
+            if not download_image(image_url, incoming_path):
+                return jsonify({"status": "error", "message": "Failed to download image"}), 400
+            img = cv2.imread(incoming_path)
+            if img is None:
+                return jsonify({"status": "error", "message": "Downloaded image unreadable"}), 400
+            box = detect_face(img)
+            if box is None:
+                try:
+                    os.remove(incoming_path)
+                except Exception:
+                    pass
+                return jsonify({"status": "unrecognized", "message": "No face detected"}), 400
+            emb = get_embedding(img, box)
+            if emb is None:
+                try:
+                    os.remove(incoming_path)
+                except Exception:
+                    pass
+                return jsonify({"status": "error", "message": "Failed to extract features"}), 500
+
+            best_match = (None, float("inf"))
+            for uname, info in USERS_DATA.items():
+                db_emb = info.get("embedding")
+                if db_emb is None:
+                    continue
+                dist = float(np.linalg.norm(emb - db_emb))
+                if dist < best_match[1]:
+                    best_match = (uname, dist)
+
+            THRESHOLD = 0.8
+            if best_match[0] and best_match[1] < THRESHOLD:
+                uname = best_match[0]
+                info = USERS_DATA[uname]
+                # move image to user folder
+                user_folder = os.path.join(FRONTEND_UPLOAD_DIR, sanitize_filename(uname))
+                os.makedirs(user_folder, exist_ok=True)
+                try:
+                    dest = os.path.join(user_folder, os.path.basename(incoming_path))
+                    os.replace(incoming_path, dest)
+                except Exception:
+                    try:
+                        os.rename(incoming_path, dest)
+                    except Exception:
+                        with open(incoming_path, "rb") as r, open(dest, "wb") as w:
+                            w.write(r.read())
+
+                return jsonify({"status": "success", "name": uname, "id": info.get("id"), "role": info.get("role"), "dept": info.get("dept")})
+
+            # no match
+            try:
+                os.remove(incoming_path)
+            except Exception:
+                pass
+            return jsonify({"status": "forbidden", "user": None}), 403
+
+        # fallback to legacy name-based login via camera
         if not name:
             return jsonify({"status": "error", "message": "Name is required"}), 400
-            
+
         print(f"[LOGIN] Received login request for {name}")
         result = login_user(name)
         return jsonify(result)
@@ -529,23 +802,101 @@ def reenroll_route():
 @app.route("/recognize", methods=["POST"])
 def recognize_route():
     try:
-        scan_result = scan_for_recognition()
+        # Expecting frontend to POST { "image_url": "http://..." }
+        payload = request.form if request.form else (request.get_json(silent=True) or {})
+        image_url = payload.get("image_url") or payload.get("image")
+        if not image_url:
+            # fallback to camera-based scanning
+            scan_result = scan_for_recognition()
+            status = scan_result.get("status")
+            if status == "success":
+                return jsonify({
+                    "status": "success",
+                    "identity": scan_result.get("identity"),
+                    "confidence": float(scan_result.get("confidence", 0.0)),
+                    "distance": float(scan_result.get("distance", 0.0)),
+                    "frames": scan_result.get("frames")
+                })
+            elif status == "partial":
+                return jsonify(scan_result), 206
+            elif status == "unrecognized":
+                return jsonify(scan_result), 404
+            else:
+                return jsonify(scan_result), 500
 
-        status = scan_result.get("status")
-        if status == "success":
-            return jsonify({
+        # download incoming image to incoming folder
+        incoming_dir = os.path.join(FRONTEND_UPLOAD_DIR, "incoming")
+        os.makedirs(incoming_dir, exist_ok=True)
+        fname = os.path.basename(image_url.split("?")[0]) or "incoming.jpg"
+        incoming_path = os.path.join(incoming_dir, fname)
+        if not download_image(image_url, incoming_path):
+            return jsonify({"status": "error", "message": "Failed to download image"}), 400
+
+        img = cv2.imread(incoming_path)
+        if img is None:
+            return jsonify({"status": "error", "message": "Downloaded image unreadable"}), 400
+
+        box = detect_face(img)
+        if box is None:
+            try:
+                os.remove(incoming_path)
+            except Exception:
+                pass
+            return jsonify({"status": "unrecognized", "message": "No face detected"}), 400
+
+        emb = get_embedding(img, box)
+        if emb is None:
+            try:
+                os.remove(incoming_path)
+            except Exception:
+                pass
+            return jsonify({"status": "error", "message": "Failed to extract features"}), 500
+
+        # compare against USERS_DATA
+        best_match = (None, float("inf"))
+        for name, info in USERS_DATA.items():
+            db_emb = info.get("embedding")
+            if db_emb is None:
+                continue
+            dist = float(np.linalg.norm(emb - db_emb))
+            if dist < best_match[1]:
+                best_match = (name, dist)
+
+        # threshold for acceptance
+        THRESHOLD = 0.8
+        if best_match[0] and best_match[1] < THRESHOLD:
+            name = best_match[0]
+            info = USERS_DATA[name]
+            # move incoming image into user's folder
+            user_folder = os.path.join(FRONTEND_UPLOAD_DIR, sanitize_filename(name))
+            os.makedirs(user_folder, exist_ok=True)
+            try:
+                dest = os.path.join(user_folder, os.path.basename(incoming_path))
+                os.replace(incoming_path, dest)
+            except Exception:
+                try:
+                    os.rename(incoming_path, dest)
+                except Exception:
+                    with open(incoming_path, "rb") as r, open(dest, "wb") as w:
+                        w.write(r.read())
+
+            response = {
                 "status": "success",
-                "identity": scan_result.get("identity"),
-                "confidence": float(scan_result.get("confidence", 0.0)),
-                "distance": float(scan_result.get("distance", 0.0)),
-                "frames": scan_result.get("frames")
-            })
-        elif status == "partial":
-            return jsonify(scan_result), 206
-        elif status == "unrecognized":
-            return jsonify(scan_result), 404
-        else:
-            return jsonify(scan_result), 500
+                "name": name,
+                "id": info.get("id"),
+                "role": info.get("role"),
+                "dept": info.get("dept"),
+                "confidence": float(max(0.0, 1.0 - best_match[1])),
+                "distance": float(best_match[1])
+            }
+            return jsonify(response)
+
+        # not matched
+        try:
+            os.remove(incoming_path)
+        except Exception:
+            pass
+        return jsonify({"status": "forbidden", "user": None}), 403
     except Exception as e:
         print(f"[ERROR] Recognition error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
