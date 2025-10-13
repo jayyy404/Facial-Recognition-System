@@ -2,7 +2,7 @@
 
 function resolvePath(): string
 {
-  $urlpath = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+  $urlpath = parse_url(urldecode($_SERVER['REQUEST_URI']), PHP_URL_PATH);
 
   // Resolve assets
   if (array_key_exists('extension', $pathinfo = pathinfo($urlpath))) {
@@ -45,11 +45,11 @@ function resolveAssets(string $urlpath, string $extension)
       break;
 
     default:
-      header('Content-Type: ' . mime_content_type(CONFIG['buildFilesDirectory'] . "/$urlpath"));
+      header('Content-Type: ' . mime_content_type(CONFIG['buildFilesDirectory'] . "/" . ltrim($urlpath, "/")));
       break;
   }
 
-  if ($asset = file_get_contents(CONFIG['buildFilesDirectory'] . "/$urlpath"))
+  if ($asset = file_get_contents(CONFIG['buildFilesDirectory'] . "/" . ltrim($urlpath, "/")))
     return $asset;
 
   http_response_code(404);

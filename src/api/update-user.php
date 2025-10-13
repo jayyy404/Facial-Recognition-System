@@ -3,17 +3,17 @@
 function POST()
 {
   $images = $_FILES['file'];
-  $destination = 'dist/uploads/';
+  $destination = '/uploads';
 
   $uploadedImageList = [];
 
   foreach($images['name'] as $index => $filename) {
-    if (file_exists("$destination$filename")) unlink("$destination$filename");
+    if (file_exists(CONFIG['buildFilesDirectory'] . "$destination/$filename")) unlink(CONFIG['buildFilesDirectory'] ."$destination/$filename");
 
     $tmpname = $images['tmp_name'][$index];
-    move_uploaded_file($tmpname, "$destination$filename");
+    move_uploaded_file($tmpname, CONFIG['buildFilesDirectory'] . "$destination/$filename");
 
-    $uploadedImageList[] = "$destination$filename";
+    $uploadedImageList[] = "$destination/$filename";
   }
 
   // Handle data

@@ -33,7 +33,7 @@ try:
 
 except Exception as exc:
     FACIAL_RECOGNITION_AVAILABLE = False
-    PHP_API_URL = "http://localhost/Original_code/api"
+    PHP_API_URL = "http://localhost/api"
     print(f"[ERROR] Could not import facial recognition stack: {exc}")
 
 app = Flask(__name__)
@@ -43,6 +43,7 @@ def _ensure_stack_ready() -> None:
     if not FACIAL_RECOGNITION_AVAILABLE:
         raise RuntimeError("Facial recognition modules are unavailable. Please verify server.py is accessible.")
 
+# Parse payload as dictionary
 def _parse_payload() -> Dict[str, Any]:
     if request.is_json:
         payload = request.get_json(silent=True)
@@ -66,6 +67,9 @@ def _extract_frames(payload: Dict[str, Any]) -> List[str]:
     frames: List[str] = []
 
     raw_frames = payload.get("frames")
+    
+    # returns a list of image sources regardless of whether 
+    # payload['frames'] is a single image or a list
     if isinstance(raw_frames, list):
         frames = [frame for frame in raw_frames if isinstance(frame, str) and frame]
 
@@ -80,7 +84,7 @@ def _lookup_user(name: Optional[str]) -> Optional[Dict[str, Any]]:
     if not name:
         return None
     try:
-        response = requests.get(f"{PHP_API_URL}/fetch_users.php", timeout=5)
+        response = requests.get(f"{PHP_API_URL}/get-state", timeout=5)
         if response.ok:
             payload = response.json()
             if isinstance(payload, dict):
@@ -95,7 +99,7 @@ def _lookup_user(name: Optional[str]) -> Optional[Dict[str, Any]]:
 def _timestamp() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
-@app.route("/test", methods=["GET"])
+@app.route("/", methods=["GET"])
 def service_healthcheck():
     status_code = 200 if FACIAL_RECOGNITION_AVAILABLE else 500
     return (
@@ -112,10 +116,13 @@ def service_healthcheck():
 @app.route("/register", methods=["POST"])
 def register_user():
     try:
+        # Check dependencies are initialized
         _ensure_stack_ready()
+        
         payload = _parse_payload()
         name = payload.get("name")
 
+        # If name does not exist, return 404
         if not name:
             return jsonify({"status": "error", "message": "Missing name parameter"}), 400
 
@@ -143,8 +150,10 @@ def register_user():
                     result["id"] = user_id
 
         return jsonify(result)
+
     except RuntimeError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500
+
     except Exception as exc:
         print(f"[ERROR] Registration failure: {exc}")
         return jsonify({"status": "error", "message": str(exc)}), 500
@@ -160,7 +169,10 @@ def login_user():
             return jsonify({"status": "error", "message": "Missing name parameter"}), 400
 
         print(f"[SERVICE] Login requested for: {name}")
+
+        # attempt login
         result = py_login_user(name)
+        
         return jsonify(result)
     except RuntimeError as exc:
         return jsonify({"status": "error", "message": str(exc)}), 500

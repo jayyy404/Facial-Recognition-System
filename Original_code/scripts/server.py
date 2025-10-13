@@ -6,12 +6,15 @@ import pickle
 import sys
 import os
 import time
+import json
 import requests
 from keras_facenet import FaceNet
 from flask import Flask, request, jsonify
-
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app, resources={r"/*/": {'origins': ['http://localhost:5173', 'http://localhost']}})
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__)) 
 DATASET_DIR = os.path.join(BASE_DIR, "dataset") 
 os.makedirs(DATASET_DIR, exist_ok=True)
@@ -22,12 +25,12 @@ PREDICTOR_PATH = os.path.join(os.path.dirname(BASE_DIR), "shape_predictor", "sha
 SAMPLES_REQUIRED = 7
 
 # PHP backend URL 
-PHP_API_URL = "http://localhost/Original_code/api"
+PHP_API_URL = "http://localhost/api"
 
 os.makedirs(DATASET_DIR, exist_ok=True)
 
 # Directory where frontend will save uploaded images (dist/uploads)
-FRONTEND_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "public", "uploads")
+FRONTEND_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(BASE_DIR)), "embeddings", "uploads")
 os.makedirs(FRONTEND_UPLOAD_DIR, exist_ok=True)
 
 # Mapping the user data: { name: {"id": id, "role": role, "dept": dept, "embedding": np.array, "image_path": path} }
@@ -189,32 +192,6 @@ def send_to_php(name, embedding, user_id=None, role="Student", dept=None, userna
         print(f"[PHP ERROR] Could not connect to PHP API: {e}")
         return {"status": "error", "message": str(e)}
 
-
-def fetch_from_php():
-    """Fetch all user embeddings from PHP backend."""
-    try:
-        response = requests.get(f"{PHP_API_URL}/fetch_users.php?embeddings=true")
-        if response.status_code == 200:
-            data = response.json()
-            users = []
-            if "users" in data and len(data["users"]) > 0:
-                for user in data["users"]:
-                    if "embedding" in user and user["embedding"]:
-                        try:
-                            # Convert embedding from hex to bytes and deserialize
-                            emb = pickle.loads(bytes.fromhex(user["embedding"]))
-                            users.append((user["name"], emb))
-                        except Exception as e:
-                            print(f"[EMBEDDING ERROR] Failed to parse embedding for {user['name']}: {e}")
-            return users
-        else:
-            print(f"[PHP ERROR] Failed to fetch users. Status: {response.status_code}")
-            return []
-    except Exception as e:
-        print(f"[PHP ERROR] {e}")
-        return []
-
-
 def sanitize_filename(name: str) -> str:
     # Simple sanitizer for folder names
     return "".join(c for c in name if c.isalnum() or c in "-_ ").strip().replace(" ", "_")
@@ -240,21 +217,33 @@ def best_image_for_user(image_urls: list) -> tuple:
     for idx, url in enumerate(image_urls or []):
         if not url:
             continue
+
+        url = f"http://localhost/{url}"
+        
         fname = os.path.basename(url.split("?")[0]) or f"img_{idx}.jpg"
+        
         # ensure extension
         if not os.path.splitext(fname)[1]:
             fname += ".jpg"
+        
         tmp_path = os.path.join(DATASET_DIR, fname)
+        
         if not download_image(url, tmp_path):
+            print("Download image failed")
             continue
+        
         img = cv2.imread(tmp_path)
+        
         if img is None:
             continue
+        
         box = detect_face(img)
         if box is None:
             continue
+        
         _, _, w, h = box
         area = w * h
+        
         if area > best[1]:
             best = (tmp_path, area, box)
 
@@ -265,24 +254,23 @@ def bootstrap_users_from_php():
     """Fetch users from PHP, download candidate images, compute embeddings and populate USERS_DATA."""
     print("[BOOTSTRAP] Fetching users from PHP to build recognition dataset...")
     try:
-        response = requests.get(f"{PHP_API_URL}/fetch_users.php?images=true&embeddings=false", timeout=10)
+        response = requests.get(f"{PHP_API_URL}/get-state", timeout=10)
         if not response.ok:
             print(f"[BOOTSTRAP] PHP fetch failed: {response.status_code}")
             return
 
         payload = response.json()
         users = payload.get("users", []) if isinstance(payload, dict) else []
+
         for user in users:
             name = user.get("name")
+            
             if not name:
                 continue
-            image_urls = []
-            # support different possible fields
-            if user.get("images") and isinstance(user.get("images"), list):
-                image_urls = user.get("images")
-            elif user.get("image_url"):
-                image_urls = [user.get("image_url")]
-
+            
+            # decode json string
+            image_urls = json.loads(user.get("photo")) if isinstance(user.get("photo"), str) else []
+            
             sanitized = sanitize_filename(name)
             user_dir = os.path.join(FRONTEND_UPLOAD_DIR, sanitized)
             os.makedirs(user_dir, exist_ok=True)
@@ -334,7 +322,6 @@ def bootstrap_users_from_php():
 
 # Run bootstrap on import/startup
 bootstrap_users_from_php()
-
 
 # FACIAL RECOGNITION CORE
 def decode_image_from_data_url(data_url: str):
@@ -462,9 +449,9 @@ def register_user(name, user_id=None, role="Student", dept=None, username=None, 
         return {"status": "error", "message": "No face images provided. Registration requires facial images."}
 
     # Persist frames to user's folder in public/uploads/<sanitized_name>/
-    saved_paths = save_frames_to_user_folder(name, frame_list)
-    if saved_paths:
-        print(f"[REGISTER] Saved {len(saved_paths)} frames to user's upload folder")
+    # saved_paths = save_frames_to_user_folder(name, frame_list)
+    # if saved_paths:
+    #     print(f"[REGISTER] Saved {len(saved_paths)} frames to user's upload folder")
 
     samples = embeddings_from_frames(frame_list)
     print(f"[REGISTER] Received {len(samples)}/{SAMPLES_REQUIRED} usable samples from browser")
@@ -506,9 +493,8 @@ def register_user(name, user_id=None, role="Student", dept=None, username=None, 
 
 
 def recognize_face(embedding, threshold=0.8):
-    users = fetch_from_php()  # Fetch from PHP database 
     min_dist, identity = float("inf"), "Unknown"
-    for name, db_emb in users:
+    for name, db_emb in USERS_DATA:
         dist = np.linalg.norm(embedding - db_emb)
         if dist < min_dist:
             min_dist, identity = dist, name
@@ -731,7 +717,7 @@ def login_route():
                 if dist < best_match[1]:
                     best_match = (uname, dist)
 
-            THRESHOLD = 0.8
+            THRESHOLD = 0.6
             if best_match[0] and best_match[1] < THRESHOLD:
                 uname = best_match[0]
                 info = USERS_DATA[uname]
@@ -802,58 +788,68 @@ def reenroll_route():
 @app.route("/recognize", methods=["POST"])
 def recognize_route():
     try:
-        # Expecting frontend to POST { "image_url": "http://..." }
-        payload = request.form if request.form else (request.get_json(silent=True) or {})
-        image_url = payload.get("image_url") or payload.get("image")
-        if not image_url:
-            # fallback to camera-based scanning
-            scan_result = scan_for_recognition()
-            status = scan_result.get("status")
-            if status == "success":
-                return jsonify({
-                    "status": "success",
-                    "identity": scan_result.get("identity"),
-                    "confidence": float(scan_result.get("confidence", 0.0)),
-                    "distance": float(scan_result.get("distance", 0.0)),
-                    "frames": scan_result.get("frames")
-                })
-            elif status == "partial":
-                return jsonify(scan_result), 206
-            elif status == "unrecognized":
-                return jsonify(scan_result), 404
-            else:
-                return jsonify(scan_result), 500
+        image_uri = request.data
+        
+        # if not image_url:
+        #     # fallback to camera-based scanning
+        #     scan_result = scan_for_recognition()
+        #     status = scan_result.get("status")
+        #     if status == "success":
+        #         return jsonify({
+        #             "status": "success",
+        #             "identity": scan_result.get("identity"),
+        #             "confidence": float(scan_result.get("confidence", 0.0)),
+        #             "distance": float(scan_result.get("distance", 0.0)),
+        #             "frames": scan_result.get("frames")
+        #         })
+        #     elif status == "partial":
+        #         return jsonify(scan_result), 206
+        #     elif status == "unrecognized":
+        #         return jsonify(scan_result), 404
+        #     else:
+        #         return jsonify(scan_result), 500
 
-        # download incoming image to incoming folder
-        incoming_dir = os.path.join(FRONTEND_UPLOAD_DIR, "incoming")
-        os.makedirs(incoming_dir, exist_ok=True)
-        fname = os.path.basename(image_url.split("?")[0]) or "incoming.jpg"
-        incoming_path = os.path.join(incoming_dir, fname)
-        if not download_image(image_url, incoming_path):
-            return jsonify({"status": "error", "message": "Failed to download image"}), 400
+        # # download incoming image to incoming folder
+        # incoming_dir = os.path.join(FRONTEND_UPLOAD_DIR, "incoming")
+        # os.makedirs(incoming_dir, exist_ok=True)
+        # fname = os.path.basename(image_url.split("?")[0]) or "incoming.jpg"
+        # incoming_path = os.path.join(incoming_dir, fname)
+        # if not download_image(image_url, incoming_path):
+        #     return jsonify({"status": "error", "message": "Failed to download image"}), 400
 
-        img = cv2.imread(incoming_path)
+        file = (request.files['image'])
+        
+        if file is None:
+            return jsonify({"status": "error", "message": "No image parameter passed to route"}), 400
+        
+        filestr = file.read()
+        npimg = np.frombuffer(filestr, dtype=np.uint8)
+        img = cv2.imdecode(npimg, flags=cv2.IMREAD_COLOR)
+        
         if img is None:
-            return jsonify({"status": "error", "message": "Downloaded image unreadable"}), 400
+            return jsonify({"status": "error", "message": "Image unreadable"}), 400
+
+        print(img)
 
         box = detect_face(img)
         if box is None:
-            try:
-                os.remove(incoming_path)
-            except Exception:
-                pass
+            # try:
+            #     os.remove(incoming_path)
+            # except Exception:
+            #     pass
             return jsonify({"status": "unrecognized", "message": "No face detected"}), 400
 
         emb = get_embedding(img, box)
         if emb is None:
-            try:
-                os.remove(incoming_path)
-            except Exception:
-                pass
+            # try:
+            #     os.remove(incoming_path)
+            # except Exception:
+            #     pass
             return jsonify({"status": "error", "message": "Failed to extract features"}), 500
 
         # compare against USERS_DATA
         best_match = (None, float("inf"))
+        
         for name, info in USERS_DATA.items():
             db_emb = info.get("embedding")
             if db_emb is None:
@@ -862,23 +858,28 @@ def recognize_route():
             if dist < best_match[1]:
                 best_match = (name, dist)
 
+        print(best_match)
+
         # threshold for acceptance
         THRESHOLD = 0.8
+        
         if best_match[0] and best_match[1] < THRESHOLD:
             name = best_match[0]
             info = USERS_DATA[name]
+            
             # move incoming image into user's folder
-            user_folder = os.path.join(FRONTEND_UPLOAD_DIR, sanitize_filename(name))
-            os.makedirs(user_folder, exist_ok=True)
-            try:
-                dest = os.path.join(user_folder, os.path.basename(incoming_path))
-                os.replace(incoming_path, dest)
-            except Exception:
-                try:
-                    os.rename(incoming_path, dest)
-                except Exception:
-                    with open(incoming_path, "rb") as r, open(dest, "wb") as w:
-                        w.write(r.read())
+            # user_folder = os.path.join(FRONTEND_UPLOAD_DIR, sanitize_filename(name))
+            # os.makedirs(user_folder, exist_ok=True)
+            
+            # try:
+            #     dest = os.path.join(user_folder, os.path.basename(incoming_path))
+            #     os.replace(incoming_path, dest)
+            # except Exception:
+            #     try:
+            #         os.rename(incoming_path, dest)
+            #     except Exception:
+            #         with open(incoming_path, "rb") as r, open(dest, "wb") as w:
+            #             w.write(r.read())
 
             response = {
                 "status": "success",
@@ -891,12 +892,8 @@ def recognize_route():
             }
             return jsonify(response)
 
-        # not matched
-        try:
-            os.remove(incoming_path)
-        except Exception:
-            pass
         return jsonify({"status": "forbidden", "user": None}), 403
+        
     except Exception as e:
         print(f"[ERROR] Recognition error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500

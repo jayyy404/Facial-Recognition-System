@@ -121,7 +121,7 @@ function editUser(id) {
   $('#udept').value = user.dept;
   $('#uusername').value = user.username;
 
-  capturedPhotos = JSON.parse(user.photos || "[]");
+  capturedPhotos = JSON.parse(user.photo || "[]");
   updatePreview();
 }
 
@@ -193,6 +193,7 @@ function capture() {
   canvas.height = video.videoHeight;
   canvas.getContext('2d').drawImage(video, 0, 0);
   let photo = canvas.toDataURL('image/png');
+
   capturedPhotos.push(photo);
   updatePreview();
 }
