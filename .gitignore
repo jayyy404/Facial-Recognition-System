@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 
 vendor
+venv
+.venv
+.env
+embeddings
+Original_code/scripts/dataset/*
+public/uploads/*

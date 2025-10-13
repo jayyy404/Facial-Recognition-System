@@ -214,6 +214,7 @@ def best_image_for_user(image_urls: list) -> tuple:
     Returns (best_image_path, face_box) or (None, None).
     """
     best = (None, 0, None)
+    print(image_urls)
     for idx, url in enumerate(image_urls or []):
         if not url:
             continue
@@ -238,6 +239,7 @@ def best_image_for_user(image_urls: list) -> tuple:
             continue
         
         box = detect_face(img)
+        
         if box is None:
             continue
         
@@ -276,6 +278,7 @@ def bootstrap_users_from_php():
             os.makedirs(user_dir, exist_ok=True)
 
             best_path, box = best_image_for_user(image_urls)
+            
             if not best_path:
                 print(f"[BOOTSTRAP] No valid image for user {name}")
                 continue
@@ -829,8 +832,6 @@ def recognize_route():
         if img is None:
             return jsonify({"status": "error", "message": "Image unreadable"}), 400
 
-        print(img)
-
         box = detect_face(img)
         if box is None:
             # try:
@@ -858,7 +859,7 @@ def recognize_route():
             if dist < best_match[1]:
                 best_match = (name, dist)
 
-        print(best_match)
+        # print(best_match)
 
         # threshold for acceptance
         THRESHOLD = 0.8
@@ -892,7 +893,7 @@ def recognize_route():
             }
             return jsonify(response)
 
-        return jsonify({"status": "forbidden", "user": None}), 403
+        return jsonify({"status": "forbidden", "user": None})
         
     except Exception as e:
         print(f"[ERROR] Recognition error: {e}")
