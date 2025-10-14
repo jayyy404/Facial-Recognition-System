@@ -4,6 +4,7 @@ function GET()
 {
   $users = Database::instance()->query("SELECT * FROM users ORDER BY id DESC", [])->fetchEntireList();
   $logs = Database::instance()->query("SELECT * FROM logs ORDER BY time DESC", [])->fetchEntireList();
+  $attendance = Database::instance()->query("SELECT * FROM attendance ORDER BY date DESC", [])->fetchEntireList();
 
-  return json(["users" => $users, "logs" => $logs]);
+  return json(["users" => $users, "logs" => $logs, "attendance" => $attendance]);
 }
