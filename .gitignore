@@ -26,7 +26,6 @@ dist-ssr
 vendor
 venv
 .venv
-.env
 embeddings
 Original_code/scripts/dataset/*
 public/uploads/*

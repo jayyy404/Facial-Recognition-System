@@ -37,3 +37,12 @@ td:has(button) {
   display: flex;
   gap: 8px;
 }
+
+.camera-box video {
+  height: unset;
+}
+
+.preview-box {
+  max-height: 280px;
+  overflow-y: auto;
+}

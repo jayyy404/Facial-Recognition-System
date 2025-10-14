@@ -19,23 +19,20 @@ function POST()
   // Handle data
   Database::instance()->query(
     "INSERT INTO 
-      users (dept, id, name, password, role, username, photo)
-      VALUES (:dept, :id, :name, :password, :role, :username, :photo)
+      users (dept, id, name, role, username, photo)
+      VALUES (:dept, :id, :name, :role, :username, :photo)
     
     ON DUPLICATE KEY UPDATE
       dept = :dept,
       id = :id,
       name = :name,
-      password = :password,
-      role = :role,
       username = :username,
       photo = :photo",
     [
       ':dept' => $_POST['dept'],
       ':id' => $_POST['id'],
       ':name' => $_POST['name'],
-      ':password' => password_hash($_POST['password'], PASSWORD_DEFAULT),
-      ':role' => $_POST['role'],
+      ':role' => "Student",
       ':username' => $_POST['username'],
       ':photo' => json_encode($uploadedImageList)
     ]

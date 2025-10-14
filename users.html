@@ -67,7 +67,10 @@
 
         <!-- Search -->
         <div class="search-bar">
-          <input type="text" id="searchInput" placeholder="Search by name, ID, or role..." />
+          <input
+            type="text"
+            id="searchInput"
+            placeholder="Search by name, ID, or role..." />
         </div>
 
         <!-- Users Table -->
@@ -98,10 +101,7 @@
             </div>
             <div>
               <label>Role</label>
-              <select name="role" id="urole">
-                <option>Student</option>
-                <option>Employee</option>
-              </select>
+              <option>Student</option>
             </div>
           </div>
 
@@ -121,10 +121,6 @@
               <label>Username</label>
               <input name="username" id="uusername" />
             </div>
-            <div>
-              <label>Password</label>
-              <input name="password" id="upassword" type="password" />
-            </div>
           </div>
 
           <!-- Camera & Preview -->
@@ -133,8 +129,12 @@
               <label>Camera</label>
               <video id="camera" autoplay></video>
               <div class="btn-group">
-                <button type="button" class="btn" id="capture-photo">Capture</button>
-                <button type="button" class="btn secondary" id="clear-photos">Clear</button>
+                <button type="button" class="btn" id="capture-photo">
+                  Capture
+                </button>
+                <button type="button" class="btn secondary" id="clear-photos">
+                  Clear
+                </button>
               </div>
             </div>
             <div class="preview-box" style="flex: 1">
@@ -145,7 +145,9 @@
 
           <div class="btn-group">
             <button class="btn">Save User</button>
-            <button class="btn secondary" id="close-modal" type="button">Cancel</button>
+            <button class="btn secondary" id="close-modal" type="button">
+              Cancel
+            </button>
           </div>
         </form>
       </div>
