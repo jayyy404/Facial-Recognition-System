@@ -15,9 +15,10 @@ function renderLogs(logs) {
       // if (log.recognized == 1) statusText = 'Recognized';
       // else if (log.recognized == 0) statusText = 'Unrecognized';
       // else if (log.recognized == 2) statusText = 'New User Added';
-      let statusText =
-        ['Unrecognized', 'Recognized', 'New User Added'].at(log.recognized) ??
-        'Unknown';
+      // Map recognized flag to user-friendly status text
+      // In DB: recognized === 1 => recognized/present, 0 => unrecognized
+  const recognizedFlag = Number(log.recognized);
+  let statusText = recognizedFlag === 1 ? 'Present' : 'Unrecognized';
 
       /**
        * This is an alias for `document.createElement`.
@@ -27,8 +28,8 @@ function renderLogs(logs) {
 
       tr.innerHTML = `
         <td>${log.time}</td>
-        <td>${log.name}</td>
-        <td>${log.user_id}</td>
+        <td>${log.name ?? ''}</td>
+        <td>${log.user_id ?? ''}</td>
         <td>${statusText}</td>
       `;
 

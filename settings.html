@@ -81,132 +81,15 @@
           </div>
           <div class="form-row">
             <div>
-              <label>Timezone</label>
-              <select name="timezone">
-                <option value="Asia/Manila">Asia/Manila</option>
-                <option value="UTC">UTC</option>
-                <option value="America/New_York">America/New_York</option>
-                <option value="Europe/London">Europe/London</option>
+              <label>Default Camera</label>
+              <select name="default_camera">
+                <option value="default">Default Camera</option>
               </select>
             </div>
-            <div>
-              <label>Date/Time Format</label>
-              <select name="datetime_format">
-              <option value="Y-m-d H:i">YYYY-MM-DD HH:MM</option>
-              <option value="d/m/Y H:i">DD/MM/YYYY HH:MM</option>
-              <option value="m/d/Y h:i A">MM/DD/YYYY hh:mm AM/PM</option>
-              </select>
-            </div> 
           </div>
           <button class="btn">Save</button>
         </form>
-
-        <!-- Account settings -->
-        <form id="account-settings" class="settings-section">
-          <h3>
-            <i class="fa fa-user-shield"></i>
-            Account & Roles
-          </h3>
-          <div class="form-row">
-            <div>
-              <label>Admin Username</label>
-              <input type="text" name="admin_username" />
-            </div>
-            <div>
-              <label>Default Role</label>
-              <select name="default_role"></select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div>
-              <label>Password Policy</label>
-              <select name="password_policy">
-                <option value="Normal">Normal</option>
-                <option value="Strong (8+ chars, symbols)">
-                  Strong (8+ chars, symbols)
-                </option>
-              </select>
-            </div>
-          </div>
-          <button class="btn">Update</button>
-        </form>
-
-        <!-- Attendance Settings -->
-        <form id="attendance-settings" class="settings-section">
-          <h3>
-            <i class="fa fa-calendar-check"></i>
-            Attendance Settings
-          </h3>
-          <div class="form-row">
-            <div>
-              <label>Default Camera</label>
-              <select name="default_camera">
-                <option value="Built-in Webcam">Built-in Webcam</option>
-                <option value="External USB Camera">External USB Camera</option>
-                <option value="IP Camera">IP Camera</option>
-              </select>
-            </div>
-            <div>
-              <label>Recognition Sensitivity</label>
-              <select name="recognition_sensitivity">
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-row">
-            <div>
-              <label>Samples per User</label>
-              <input type="number" name="samples_per_user" min="1" max="20" />
-            </div>
-            <div>
-              <label>Attendance Cut-off Time</label>
-              <input type="time" name="cutoff_time" />
-            </div>
-          </div>
-          <button class="btn">Apply</button>
-        </form>
-
-        <!-- Database and backup settings -->
-        <form id="db-and-backup-settings" class="settings-section">
-          <h3>
-            <i class="fa fa-database"></i>
-            Database & Backup
-          </h3>
-          <div class="form-row">
-            <div>
-              <label>Database Status</label>
-              <input type="text" value="Connected" readonly />
-            </div>
-            <div>
-              <label>Last Backup</label>
-              <input type="text" name="last_backup" readonly />
-            </div>
-          </div>
-          <button class="btn">Backup Now</button>
-          <button class="btn secondary" disabled>Restore</button>
-        </form>
-
-        <form id="security-settings" class="settings-section">
-          <h3>
-            <i class="fa fa-lock"></i>
-            Security
-          </h3>
-          <div class="form-row">
-            <div>
-              <label>Session Timeout (minutes)</label>
-              <input type="number" name="session_timeout" min="1" />
-            </div>
-            <div>
-              <label>Access Level</label>
-              <select name="access_level">
-                <option value="Admin Only">Admin Only</option>
-              </select>
-            </div>
-          </div>
-          <button class="btn">Save Security</button>
-        </form>
+        <!-- Removed unused settings sections: Account, Attendance, Database & Backup, Security -->
 
         <div class="settings-section">
           <h3>

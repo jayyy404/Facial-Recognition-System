@@ -18,81 +18,18 @@ async function updateSettings() {
   const settings = await fetch('/api/settings/get-settings').then((res) =>
     res.json()
   );
-  const roles = await fetch('/api/settings/get-roles').then((res) =>
-    res.json()
-  );
+  // get roles removed — we no longer show account/roles sections
 
   function updateSystemSettings() {
     $('#system-settings [name="system_name"]').value = settings.system_name;
     $('#system-settings [name="institution"]').value = settings.institution;
-    $.all(`#system-settings [name="timezone"] option`).forEach(
-      (el) => (el.selected = el.value === settings.timezone)
-    );
-    $.all(`#system-settings [name="datetime_format"] option`).forEach(
-      (el) => (el.selected = el.value === settings.datetime_format)
-    );
+    // default_camera selection will be applied after camera list is populated
+    // (populateCameraList reads settings.default_camera to pre-select)
   }
 
-  function updateAccountSettings() {
-    $('#account-settings [name="admin_username"]').value =
-      settings.admin_username;
-
-    // Roles
-    $('#account-settings [name="default_role"]').replaceChildren(
-      roles.map(({ role_name }) => {
-        const opt = $.create('option');
-
-        opt.value = role_name;
-        opt.innerHTML = role_name;
-        opt.selected = settings.default_role === role_name;
-
-        return opt;
-      })
-    );
-
-    // Password policy
-    $.all(`#account-settings [name="password_policy"] option`).forEach(
-      (el) => (el.selected = el.value === settings.password_policy)
-    );
-  }
-
-  function updateAttendanceSettings() {
-    // Default camera
-    $.all(`#attendance-settings [name="default_camera"] option`).forEach(
-      (el) => (el.selected = el.value === settings.default_camera)
-    );
-
-    // Recognition sensitivity
-    $.all(
-      `#attendance-settings [name="recognition_sensitivity"] option`
-    ).forEach(
-      (el) => (el.selected = el.value === settings.recognition_sensitivity)
-    );
-
-    // Samples per user
-    $('#attendance-settings [name="samples_per_user"]').value =
-      settings.samples_per_user;
-    $('#attendance-settings [name="cutoff_time"]').value = settings.cutoff_time;
-  }
-
-  function updateDatabaseAndBackupSettings() {
-    $('#db-and-backup-settings [name="last_backup"]').value =
-      settings.last_backup ?? 'Not yet';
-  }
-
-  function updateSecuritySettings() {
-    $('#security-settings [name="session_timeout"]').value =
-      settings.session_timeout;
-    $.all(`#security-settings [name="access_level"] option`).forEach(
-      (el) => (el.selected = el.value === settings.access_level)
-    );
-  }
-
+  // populate system settings and camera list
   updateSystemSettings();
-  updateAccountSettings();
-  updateAttendanceSettings();
-  updateDatabaseAndBackupSettings();
-  updateSecuritySettings();
+  await populateCameraList();
 }
 
 function updateEventListeners() {
@@ -112,69 +49,57 @@ function updateEventListeners() {
       }
     });
   };
+}
 
-  $('#account-settings').onsubmit = (e) => {
-    e.preventDefault();
+async function populateCameraList() {
+  // Create or find the select element inside system-settings
+  const select = $('#system-settings [name="default_camera"]');
 
-    const formData = new FormData(e.currentTarget);
+  // If browser supports mediaDevices, enumerate video input devices
+  if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cameras = devices.filter((d) => d.kind === 'videoinput');
 
-    fetch('/api/settings/updates/account', {
-      method: 'POST',
-      body: formData,
-    }).then(async (res) => {
-      if (res.ok) {
-        updateSettings();
-        $('.alert').style.removeProperty('display');
-        $('#alert-contents').innerHTML = await res.text();
+      // Clear existing options and add placeholder option
+      const options = cameras.map((cam) => {
+        const opt = $.create('option');
+        opt.value = cam.deviceId || cam.label || 'default';
+        // If label is empty (no permission), show placeholder text
+        opt.innerHTML = cam.label && cam.label.length > 0 ? cam.label : '— Camera name hidden (allow camera access to see title)';
+        return opt;
+      });
+
+      // If there's no camera detected, keep a default option
+      if (options.length === 0) {
+        const opt = $.create('option');
+        opt.value = 'default';
+        opt.innerHTML = 'Default Camera';
+        options.push(opt);
       }
-    });
-  };
 
-  $('#attendance-settings').onsubmit = (e) => {
-    e.preventDefault();
+      select.replaceChildren(...options);
 
-    const formData = new FormData(e.currentTarget);
-
-    fetch('/api/settings/updates/attendance', {
-      method: 'POST',
-      body: formData,
-    }).then(async (res) => {
-      if (res.ok) {
-        updateSettings();
-        $('.alert').style.removeProperty('display');
-        $('#alert-contents').innerHTML = await res.text();
-      }
-    });
-  };
-
-  $('#db-and-backup-settings').onsubmit = (e) => {
-    e.preventDefault();
-
-    fetch('/api/settings/updates/backup', { method: 'POST' }).then(
-      async (res) => {
-        if (res.ok) {
-          updateSettings();
-          $('.alert').style.removeProperty('display');
-          $('#alert-contents').innerHTML = await res.text();
+      // Pre-select saved camera from settings if present
+      try {
+        const settings = await fetch('/api/settings/get-settings').then((res) => res.json());
+        if (settings.default_camera) {
+          const match = Array.from(select.options).find(o => o.value === settings.default_camera);
+          if (match) match.selected = true;
         }
+      } catch (err) {
+        // ignore
       }
-    );
-  };
-
-  $('#security-settings').onsubmit = (e) => {
-    e.preventDefault();
-
-    const formData = new FormData(e.currentTarget);
-
-    fetch('/api/settings/updates/security', {
-      method: 'POST',
-      body: formData,
-    }).then(async (res) => {
-      if (res.ok) {
-        updateSettings();
-        $('.alert').style.removeProperty('display');
-        $('#alert-contents').innerHTML = await res.text();
-      }
-    });
-  };
+    } catch (err) {
+      console.error('Failed to enumerate devices', err);
+    }
+  } else {
+    // Fallback: single default option
+    select.replaceChildren((() => {
+      const opt = $.create('option');
+      opt.value = 'default';
+      opt.innerHTML = 'Default Camera';
+      return opt;
+    })());
+  }
 }

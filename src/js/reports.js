@@ -18,9 +18,7 @@ $('#show-report-individual').onclick = () => showReport('individual', fetchIndiv
 
 updateClock();
 
-// ------------------------------------------------------------------------------------
-// Equivalent to the GET param load by default thingy
-// ------------------------------------------------------------------------------------
+
 const params = new URLSearchParams(location.search);
 
 if (params.has('userId')) {
@@ -31,10 +29,7 @@ if (params.has('userId')) {
   showReport('monthly', fetchMonthly);
 }
 
-// ------------------------------------------------------------------------------------
-// PHP things moved to the frontend call side. This is way cleaner than doing
-// it inline in PHP files.
-// ------------------------------------------------------------------------------------
+
 
 function renderData(reportData, columns, displayColumns, container) {
   // Check if columns and displayColumns check out
@@ -67,7 +62,8 @@ function renderData(reportData, columns, displayColumns, container) {
     })
   );
 
-  container.replaceChild(table);
+
+  container.replaceChildren(table);
 }
 
 async function fetchMonthly() {
@@ -79,24 +75,15 @@ async function fetchMonthly() {
   }
 
   renderData(
-    monthlyReport, 
-    ['user_id', 'name', 'role', 'dept', 'status'],
-    ['User ID', 'Name', 'Role', 'Dept', 'Status'],
+    monthlyReport,
+    ['user_id', 'name', 'role', 'dept', 'month', 'status'],
+    ['User ID', 'Name', 'Role', 'Dept', 'Month', 'Status'],
     $('#monthly .data')
   );  
 }
 
 async function customReportGeneration() {
   const data = await fetch('/api/reports/data').then(res => res.json());
-
-  /** 
-   * There are a couple things I changed here:
-   * - Removed the Generate button. Changes are now applied automatically once date changes.
-   * - Fetch the data on load instead of every change, and then applied the filter client-side.
-   * 
-   * This way, the data is fetched only once, and then filters are applied after without 
-   * refreshing the page.
-   */
   const form = $('#custom form');
   
   updateCustomReportUI();
@@ -165,7 +152,7 @@ async function fetchIndividualUser() {
       $('#individual .data').innerHTML = `<p>Input a user ID above to continue.</p>`;
       return;
     }
-    // console.log
+  
 
     const user = users.find(user => user.id === id);
 

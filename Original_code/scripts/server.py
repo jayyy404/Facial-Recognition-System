@@ -219,7 +219,7 @@ def best_image_for_user(image_urls: list) -> tuple:
         if not url:
             continue
 
-        url = f"http://localhost/{url}"
+        url = f"http://localhost/{url.lstrip('/')}"
         
         fname = os.path.basename(url.split("?")[0]) or f"img_{idx}.jpg"
         

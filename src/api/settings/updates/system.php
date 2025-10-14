@@ -2,10 +2,13 @@
 
 function POST()
 {
-  $system_name = $_POST['system_name'];
-  $institution = $_POST['institution'];
-  $timezone = $_POST['timezone'];
-  $datetime_format = $_POST['datetime_format'];
+  // Fetch current settings so we can safely fall back when POST keys are missing
+  $current = Database::instance()->query("SELECT * FROM settings WHERE id = 1", [])->fetchOneRow();
+
+  $system_name = $_POST['system_name'] ?? ($current['system_name'] ?? '');
+  $institution = $_POST['institution'] ?? ($current['institution'] ?? '');
+  $timezone = $_POST['timezone'] ?? ($current['timezone'] ?? 'UTC');
+  $datetime_format = $_POST['datetime_format'] ?? ($current['datetime_format'] ?? 'Y-m-d H:i');
 
   Database::instance()->query(
     "UPDATE settings 
